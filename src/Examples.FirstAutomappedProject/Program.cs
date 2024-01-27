@@ -1,22 +1,25 @@
 ﻿using System;
 using System.IO;
 using Examples.FirstAutomappedProject.Entities;
+using FluentNHibernate;
 using FluentNHibernate.Automapping;
 using FluentNHibernate.Cfg;
 using FluentNHibernate.Cfg.Db;
 using NHibernate;
 using NHibernate.Cfg;
 using NHibernate.Tool.hbm2ddl;
+using Serilog;
+using NEnv = NHibernate.Cfg.Environment;
 
 namespace Examples.FirstAutomappedProject;
 
 /// <summary>
 /// Example automapped project.
-/// 
+///
 /// Points of interest:
 ///     Program.CreateSessionFactory()
 ///     Program.CreateAutomappings()
-/// 
+///
 ///     ExampleAutomappingConfiguration
 ///     CascadeConvention
 /// </summary>
@@ -26,6 +29,9 @@ class Program
 
     static void Main()
     {
+        //Serilog
+        ConfigueSerilog();
+
         // create our NHibernate session factory
         var sessionFactory = CreateSessionFactory();
 
@@ -74,8 +80,7 @@ class Program
             // retreive all stores and display them
             using (session.BeginTransaction())
             {
-                var stores = session.CreateCriteria(typeof(Store))
-                    .List<Store>();
+                var stores = session.CreateCriteria(typeof(Store)).List<Store>();
 
                 foreach (var store in stores)
                 {
@@ -94,14 +99,30 @@ class Program
         // all the classes in the assembly that contains Employee), and then either
         // use the Setup and Where methods to restrict that behaviour, or (preferably)
         // supply a configuration instance of your definition to control the automapper.
-        return AutoMap.AssemblyOf<Employee>(new ExampleAutomappingConfiguration())
-            .Conventions.Add<CascadeConvention>();
+        return AutoMap
+            .AssemblyOf<Employee>(new ExampleAutomappingConfiguration())
+            .Conventions
+            .Add<CascadeConvention>();
+    }
+
+    private static void ConfigueSerilog()
+    {
+        var appName = AppDomain.CurrentDomain.FriendlyName;
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel
+            .Verbose()
+            .WriteTo
+            .File(
+                $"{appName}.log.txt",
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level}] {Message:lj}{NewLine}{Exception}"
+            )
+            .CreateLogger();
     }
 
     /// <summary>
     /// Configure NHibernate. This method returns an ISessionFactory instance that is
     /// populated with mappings created by Fluent NHibernate.
-    /// 
+    ///
     /// Line 1:   Begin configuration
     ///      2+3: Configure the database being used (SQLite file db)
     ///      4+5: Specify what mappings are going to be used (Automappings from the CreateAutomappings method)
@@ -112,13 +133,28 @@ class Program
     /// <returns></returns>
     private static ISessionFactory CreateSessionFactory()
     {
-        return Fluently.Configure()
-            .Database(SQLiteConfiguration.Standard
-                .UsingFile(DbFile))
-            .Mappings(m =>
-                m.AutoMappings.Add(CreateAutomappings))
-            .ExposeConfiguration(BuildSchema)
+        return Fluently
+            .Configure()
+            .UsingSerilog()
+            .Database(SQLiteConfiguration.Standard.UsingFile(DbFile))
+            .Mappings(m => m.AutoMappings.Add(CreateAutomappings))
+            .ExposeConfiguration(ConfigureHibernateProperties)
             .BuildSessionFactory();
+    }
+
+    private static void ConfigureHibernateProperties(Configuration cfg)
+    {
+        //hbm2ddl.auto Automatically export schema DDL to the database when the ISessionFactory is created.
+        //With create - drop, the database schema will be dropped when the ISessionFactory is closed explicitly.
+        //eg.create | create - drop | update | validate
+        cfg.SetProperty(NEnv.Hbm2ddlAuto, "update");
+        // show_sql Write all SQL statements to console.Defaults to false.
+        // eg. true | false
+        cfg.SetProperty(NEnv.ShowSql, "true");
+        cfg.SetProperty(NEnv.FormatSql, "true");
+        // use_sql_comments Generate SQL with comments. Defaults to false.
+        // eg. true | false
+        cfg.SetProperty(NEnv.UseSqlComments, "true");
     }
 
     private static void BuildSchema(Configuration config)
@@ -129,15 +165,14 @@ class Program
 
         // this NHibernate tool takes a configuration (with mapping info in)
         // and exports a database schema from it
-        new SchemaExport(config)
-            .Create(false, true);
+        new SchemaExport(config).Create(false, true);
     }
 
     private static void WriteStorePretty(Store store)
     {
         Console.WriteLine(store.Name);
         Console.WriteLine("  Products:");
-                        
+
         foreach (var product in store.Products)
         {
             Console.WriteLine("    " + product.Name);

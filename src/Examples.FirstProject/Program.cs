@@ -1,11 +1,14 @@
 ﻿using System;
 using System.IO;
 using Examples.FirstProject.Entities;
+using FluentNHibernate;
 using FluentNHibernate.Cfg;
 using FluentNHibernate.Cfg.Db;
 using NHibernate;
 using NHibernate.Cfg;
 using NHibernate.Tool.hbm2ddl;
+using Serilog;
+using NEnv = NHibernate.Cfg.Environment;
 
 namespace Examples.FirstProject;
 
@@ -15,6 +18,9 @@ class Program
 
     static void Main()
     {
+        //Serilog
+        ConfigueSerilog();
+
         // create our NHibernate session factory
         var sessionFactory = CreateSessionFactory();
 
@@ -63,8 +69,7 @@ class Program
             // retreive all stores and display them
             using (session.BeginTransaction())
             {
-                var stores = session.CreateCriteria(typeof(Store))
-                    .List<Store>();
+                var stores = session.CreateCriteria(typeof(Store)).List<Store>();
 
                 foreach (var store in stores)
                 {
@@ -76,15 +81,44 @@ class Program
         Console.ReadKey();
     }
 
+    private static void ConfigueSerilog()
+    {
+        var appName = AppDomain.CurrentDomain.FriendlyName;
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel
+            .Verbose()
+            .WriteTo
+            .File(
+                $"{appName}.log.txt",
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level}] {Message:lj}{NewLine}{Exception}"
+            )
+            .CreateLogger();
+    }
+
     private static ISessionFactory CreateSessionFactory()
     {
-        return Fluently.Configure()
-            .Database(SQLiteConfiguration.Standard
-                .UsingFile(DbFile))
-            .Mappings(m =>
-                m.FluentMappings.AddFromAssemblyOf<Program>())
-            .ExposeConfiguration(BuildSchema)
+        return Fluently
+            .Configure()
+            .UsingSerilog()
+            .Database(SQLiteConfiguration.Standard.UsingFile(DbFile))
+            .Mappings(m => m.FluentMappings.AddFromAssemblyOf<Program>())
+            .ExposeConfiguration(ConfigureHibernateProperties)
             .BuildSessionFactory();
+    }
+
+    private static void ConfigureHibernateProperties(Configuration cfg)
+    {
+        //hbm2ddl.auto Automatically export schema DDL to the database when the ISessionFactory is created.
+        //With create - drop, the database schema will be dropped when the ISessionFactory is closed explicitly.
+        //eg.create | create - drop | update | validate
+        cfg.SetProperty(NEnv.Hbm2ddlAuto, "update");
+        // show_sql Write all SQL statements to console.Defaults to false.
+        // eg. true | false
+        cfg.SetProperty(NEnv.ShowSql, "true");
+        cfg.SetProperty(NEnv.FormatSql, "true");
+        // use_sql_comments Generate SQL with comments. Defaults to false.
+        // eg. true | false
+        cfg.SetProperty(NEnv.UseSqlComments, "true");
     }
 
     private static void BuildSchema(Configuration config)
@@ -95,15 +129,14 @@ class Program
 
         // this NHibernate tool takes a configuration (with mapping info in)
         // and exports a database schema from it
-        new SchemaExport(config)
-            .Create(false, true);
+        new SchemaExport(config).Create(false, true);
     }
 
     private static void WriteStorePretty(Store store)
     {
         Console.WriteLine(store.Name);
         Console.WriteLine("  Products:");
-                        
+
         foreach (var product in store.Products)
         {
             Console.WriteLine("    " + product.Name);

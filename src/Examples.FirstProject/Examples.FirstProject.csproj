@@ -1,18 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   
   <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <OutputType>Exe</OutputType>        
     <PlatformTarget>AnyCpu</PlatformTarget>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\FluentNHibernate.Extensions\FluentNHibernate.Extensions.csproj" />
     <ProjectReference Include="..\FluentNHibernate\FluentNHibernate.csproj" />
   </ItemGroup>
 
   <ItemGroup>    
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+	<PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
   </ItemGroup>
   
   <ItemGroup Condition=" '$(TargetFramework)' == 'net461' ">
